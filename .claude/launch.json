@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "monopoly-banker",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--port",
+        "8787",
+        "--var",
+        "LOCAL_DEV:true"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "monopoly-banker-ads",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--port",
+        "8788",
+        "--var",
+        "LOCAL_DEV:true",
+        "--var",
+        "ADSENSE_SLOT:1234567890",
+        "--persist-to",
+        ".wrangler/state-ads"
+      ],
+      "port": 8788
+    }
+  ]
+}

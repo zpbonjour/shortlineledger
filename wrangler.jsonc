@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "monopoly-banker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-20",
+  "routes": [
+    { "pattern": "shortlineledger.com", "custom_domain": true },
+    { "pattern": "www.shortlineledger.com", "custom_domain": true }
+  ],
+  "workers_dev": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "ADS_ENABLED": "true",
+    "ADSENSE_CLIENT": "ca-pub-3792530599153007",
+    "ADSENSE_SLOT": ""
+  },
+  "ratelimits": [
+    { "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 60, "period": 10 } }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
