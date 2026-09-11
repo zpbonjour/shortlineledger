@@ -1,0 +1,22 @@
+{
+  "name": "monopoly-banker",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Family Monopoly banker: cash, deeds, mortgages, buildings and the Free Parking pot",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:app": "vitest run --project app",
+    "test:worker": "vitest run --project worker",
+    "check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.129.0"
+  }
+}

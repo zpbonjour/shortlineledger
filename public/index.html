@@ -1,0 +1,1335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Public, offline-capable single-page app. See public/sw.js for the caching strategy. -->
+<!-- The Worker flips this to "true" when ADS_ENABLED is set and appends the AdSense script plus adsense-client / adsense-slot meta tags. -->
+<meta name="ads-enabled" content="false">
+<meta name="theme-color" content="#1E7A45">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Banker">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+</head>
+<body>
+<title>Monopoly Banker</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+:root{
+  --bg:#EDF2EA; --surface:#FFFFFF; --surface-2:#F3F6F1; --ink:#17211A; --ink-2:#4C5A50; --ink-3:#77857B; --line:#D3DCD1;
+  --accent:#1E7A45; --accent-ink:#FFFFFF; --money:#1E7A45; --danger:#B3261E; --warn:#A86A12; --pot:#B8860B;
+  --overlay:rgba(12,24,16,.55); --shadow:0 12px 32px rgba(16,32,22,.22); --radius:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111713; --surface:#1A231D; --surface-2:#222D25; --ink:#E6ECE7; --ink-2:#A8B3AB; --ink-3:#7E8A81; --line:#2D3A31;
+    --accent:#3DB36E; --accent-ink:#0B1A10; --money:#5FCB8A; --danger:#F2776D; --warn:#E3A93E; --pot:#E0B640;
+    --overlay:rgba(0,0,0,.65); --shadow:0 12px 32px rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111713; --surface:#1A231D; --surface-2:#222D25; --ink:#E6ECE7; --ink-2:#A8B3AB; --ink-3:#7E8A81; --line:#2D3A31;
+  --accent:#3DB36E; --accent-ink:#0B1A10; --money:#5FCB8A; --danger:#F2776D; --warn:#E3A93E; --pot:#E0B640;
+  --overlay:rgba(0,0,0,.65); --shadow:0 12px 32px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:15px/1.45 'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{max-width:1080px;margin:0 auto;padding:env(safe-area-inset-top) 12px calc(28px + env(safe-area-inset-bottom))}
+.offline{font:600 10px/1 'IBM Plex Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--warn);margin-top:3px}
+.offline[hidden]{display:none}
+.mono{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* Top bar */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 0 10px}
+.brand{display:flex;flex-direction:column;gap:1px;min-width:0}
+.brand-title{font:600 24px/1 Oswald,Impact,'Arial Narrow',sans-serif;letter-spacing:.03em;text-transform:uppercase}
+.brand-sub{font-size:11px;color:var(--ink-3);letter-spacing:.1em;text-transform:uppercase}
+.top-actions{display:flex;gap:6px;flex:none}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:9px 12px;display:flex;flex-direction:column;gap:2px;text-align:left;min-width:0}
+button.stat{cursor:pointer}
+button.stat:hover{border-color:var(--ink-3)}
+.stat-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-value{font:600 17px/1.2 'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform-origin:left center}
+.stat.pot .stat-value{color:var(--pot)}
+.stat .hint{font-size:11px;color:var(--ink-3)}
+
+/* Tabs */
+.tabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin-bottom:12px}
+.tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-2px;padding:10px 6px;font:600 14px/1 Oswald,Impact,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);cursor:pointer}
+.tabs button.active{color:var(--ink);border-bottom-color:var(--accent)}
+
+/* Players */
+.players{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.player{position:relative;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--pc);border-radius:var(--radius);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:6px;min-width:0}
+.player:hover{border-color:var(--ink-3);border-left-color:var(--pc)}
+.player.is-turn{box-shadow:0 0 0 2px var(--accent)}
+.player.is-bankrupt{opacity:.5}
+.player-head{display:flex;align-items:center;gap:8px}
+.player-head h3{margin:0;font:600 18px/1.1 Oswald,Impact,sans-serif;letter-spacing:.02em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.token{width:14px;height:14px;border-radius:50%;background:var(--pc);flex:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
+.cash{font:600 30px/1 'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--money);transform-origin:left center}
+.cash.neg{color:var(--danger)}
+.meta{font-size:12.5px;color:var(--ink-2)}
+.deeds{display:flex;flex-wrap:wrap;gap:3px;min-height:20px}
+.deed{width:14px;height:20px;border-radius:2px;background:var(--gc);border:1px solid rgba(0,0,0,.18);font:600 9px/1 'IBM Plex Mono',monospace;color:#fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:1px;text-shadow:0 0 2px rgba(0,0,0,.7)}
+.deed.mort{opacity:.4;background-image:repeating-linear-gradient(45deg,transparent 0 2px,rgba(0,0,0,.55) 2px 4px)}
+.chip{font:600 10px/1 'IBM Plex Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border-radius:999px;background:var(--accent);color:var(--accent-ink);flex:none}
+.add-card{border:2px dashed var(--line);background:transparent;color:var(--ink-2);display:flex;align-items:center;justify-content:center;font:600 15px Oswald,Impact,sans-serif;letter-spacing:.06em;text-transform:uppercase;min-height:120px;border-radius:var(--radius);cursor:pointer}
+.add-card:hover{border-color:var(--ink-3);color:var(--ink)}
+.empty{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center}
+.empty h2{margin:0;font:600 22px Oswald,Impact,sans-serif}
+.empty p{margin:0;color:var(--ink-2);max-width:42ch}
+
+/* Properties */
+.groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.group{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.group-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 12px;background:var(--gc);color:var(--gtext);font:600 13px/1 Oswald,Impact,sans-serif;letter-spacing:.1em;text-transform:uppercase}
+.group-head .set{font:600 11px/1 'IBM Plex Sans',sans-serif;letter-spacing:.06em;opacity:.9}
+.prop-row{display:flex;justify-content:space-between;gap:8px;align-items:center;width:100%;padding:10px 12px;border:0;border-top:1px solid var(--line);background:var(--tint,transparent);text-align:left;cursor:pointer}
+.prop-row:first-of-type{border-top:0}
+.prop-row:hover{background:var(--tint-strong,var(--surface-2))}
+.prop-name{display:flex;align-items:center;gap:8px;font:500 15px/1.2 Oswald,Impact,sans-serif;letter-spacing:.01em;min-width:0}
+.prop-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prop-name small{font:500 12px 'IBM Plex Mono',monospace;color:var(--ink-3);flex:none}
+.prop-state{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);flex:none}
+.owner{display:inline-flex;align-items:center;gap:5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bld{display:inline-flex;gap:2px;align-items:flex-end}
+.house{width:9px;height:9px;background:var(--accent);clip-path:polygon(50% 0,100% 42%,100% 100%,0 100%,0 42%)}
+.hotel{width:22px;height:11px;background:var(--danger);border-radius:1px}
+.tag{font:600 10px/1 'IBM Plex Sans',sans-serif;letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px;background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line);white-space:nowrap}
+.tag.mort{color:var(--danger);border-color:var(--danger)}
+.swatch{width:12px;height:16px;border-radius:2px;background:var(--gc);border:1px solid rgba(0,0,0,.18);flex:none;display:inline-block;vertical-align:middle}
+.picon{width:20px;height:20px;flex:none;color:var(--ink-2)}
+
+/* Property pickers (tinted tiles) */
+.pick-list{display:grid;grid-template-columns:1fr;gap:6px}
+.pick{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--tint);color:var(--ink);text-align:left;cursor:pointer;min-height:46px}
+.pick:hover{background:var(--tint-strong)}
+.pick.sel{background:var(--tint-strong);box-shadow:inset 0 0 0 2px var(--ink);cursor:default}
+.pick-name{flex:1;font:500 15px Oswald,Impact,sans-serif;letter-spacing:.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick-right{font:500 12.5px 'IBM Plex Mono',monospace;color:var(--ink-2);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.pick-sel{display:flex;gap:8px;align-items:center}
+.pick-sel .pick{flex:1}
+
+/* Log */
+.log{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.log-row{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:9px 12px;border-top:1px solid var(--line);font-size:13.5px}
+.log-row:first-child{border-top:0}
+.log-time{font:500 12px 'IBM Plex Mono',monospace;color:var(--ink-3);padding-top:2px}
+.log-tools{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+
+/* Sheet */
+.overlay{position:fixed;inset:0;background:var(--overlay);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+.sheet{background:var(--surface);color:var(--ink);width:100%;max-width:560px;max-height:92vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+@media (min-width:700px){.overlay{align-items:center;padding:24px}.sheet{border-radius:14px;max-height:88vh}}
+.sheet-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.sheet-head h2{flex:1;margin:0;font:600 20px/1.1 Oswald,Impact,sans-serif;letter-spacing:.02em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-body{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:14px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+.icon-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);font:600 16px/1 'IBM Plex Sans',sans-serif;cursor:pointer;flex:none}
+
+/* Controls */
+.btn{font:600 14px/1.2 'IBM Plex Sans',sans-serif;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);cursor:pointer;min-height:42px}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--danger);border-color:var(--danger);background:transparent}
+.btn.ghost{background:transparent}
+.btn.dim{opacity:.45}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.block{width:100%}
+.btn.sm{padding:7px 10px;min-height:34px;font-size:13px}
+.btn.undo{border-color:var(--ink-3)}
+.field{display:flex;flex-direction:column;gap:5px}
+.field.indent{margin-left:30px}
+.field label,.label{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+input[type=text],input[type=number],select{font:500 16px 'IBM Plex Sans',sans-serif;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%;min-height:44px}
+input.money{font-family:'IBM Plex Mono',monospace}
+.quick{display:flex;flex-wrap:wrap;gap:6px}
+.quick .btn{padding:7px 10px;min-height:34px;font-family:'IBM Plex Mono',monospace;font-size:13px}
+.check{display:flex;align-items:flex-start;gap:10px;font-size:14px;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--accent);margin:2px 0 0;flex:none}
+.check-text{display:flex;flex-direction:column;gap:2px}
+.check-text b{font-weight:600}
+.check-text small{font-size:12.5px;color:var(--ink-3)}
+.settings-group{display:flex;flex-direction:column;gap:12px}
+.settings-group h3{margin:0;padding-bottom:6px;border-bottom:1px solid var(--line);font:600 15px/1 Oswald,Impact,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.actions-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+@media (max-width:420px){.actions-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.actions-grid .btn{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;min-height:62px;padding:10px 12px}
+.actions-grid .btn small{font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink-3);letter-spacing:0}
+.actions-grid .btn.primary small{color:var(--accent-ink);opacity:.8}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.callout{background:var(--surface-2);border-radius:8px;padding:10px 12px;font-size:14px;line-height:1.45}
+.callout strong{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.callout.warn{border-left:4px solid var(--warn)}
+.callout.danger{border-left:4px solid var(--danger)}
+.big-money{font:600 34px/1 'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--money);transform-origin:left center}
+.big-money.neg{color:var(--danger)}
+.big-money.pot{color:var(--pot)}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.stepper button{width:40px;height:40px;border:0;background:var(--surface-2);font:600 20px/1 'IBM Plex Sans',sans-serif;cursor:pointer}
+.stepper button.dim{opacity:.35}
+.stepper span{min-width:84px;text-align:center;font:600 12px 'IBM Plex Sans',sans-serif;padding:0 6px}
+.manage-list{display:flex;flex-direction:column;gap:8px}
+.manage-row{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--tint)}
+.manage-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.manage-title button{border:0;background:none;padding:0;font:600 16px Oswald,Impact,sans-serif;letter-spacing:.01em;cursor:pointer;text-align:left}
+.mini-list{display:flex;flex-direction:column;gap:4px}
+.mini{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--tint);text-align:left;cursor:pointer}
+.mini:hover{background:var(--tint-strong)}
+.mini-name{flex:1;font:500 14px Oswald,Impact,sans-serif;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini-state{display:flex;gap:6px;align-items:center}
+table.rent{width:100%;border-collapse:collapse;font-size:14px}
+table.rent td{padding:5px 0;border-top:1px solid var(--line)}
+table.rent tr:first-child td{border-top:0}
+table.rent td:last-child{text-align:right;font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.deed-card{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.deed-band{background:var(--gc);color:var(--gtext);padding:8px 12px;font:600 12px/1 Oswald,Impact,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+.deed-card h3{margin:0;padding:10px 12px 4px;font:600 22px/1.1 Oswald,Impact,sans-serif;letter-spacing:.02em}
+.deed-card .facts{display:flex;gap:14px;flex-wrap:wrap;padding:0 12px 10px;font-size:13px;color:var(--ink-2)}
+.deed-card .facts b{font:600 13px 'IBM Plex Mono',monospace;color:var(--ink)}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.swatches button{width:32px;height:32px;border-radius:50%;border:3px solid transparent;background:var(--pc);cursor:pointer}
+.swatches button.sel{border-color:var(--ink)}
+.setup-row{display:flex;gap:8px;align-items:center}
+.setup-row input{flex:1}
+.ptiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ptile{display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left;padding:10px 12px;min-height:48px;border-left:5px solid var(--pc);font-weight:500;min-width:0}
+.ptile.sel{background:var(--pc-tint);box-shadow:inset 0 0 0 2px var(--pc);border-color:var(--pc);font-weight:600}
+.ptile-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptile-cash{font:500 12.5px 'IBM Plex Mono',monospace;color:var(--ink-2);flex:none}
+hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:10px;font-size:14px;max-width:min(92vw,520px);z-index:100;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px;text-align:left}
+.toast.error{background:var(--danger);color:#fff}
+.toast-btn{font:600 12px/1 'IBM Plex Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:7px 10px;border-radius:6px;border:1px solid currentColor;background:transparent;color:inherit;cursor:pointer;flex:none}
+@media (prefers-reduced-motion:no-preference){.toast{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}}
+
+/* Money movement effects */
+#fxRoot{position:fixed;inset:0;pointer-events:none;z-index:200;overflow:hidden}
+.fx-pill{position:fixed;left:0;top:0;padding:6px 11px;border-radius:999px;background:var(--money);color:var(--accent-ink);font:600 14px/1 'IBM Plex Mono',monospace;box-shadow:0 6px 16px rgba(0,0,0,.28);will-change:transform,opacity;opacity:0}
+.fx-delta{position:fixed;left:0;top:0;font:600 15px/1 'IBM Plex Mono',monospace;will-change:transform,opacity;opacity:0;text-shadow:0 1px 0 var(--surface)}
+.fx-delta.gain{color:var(--money)}
+.fx-delta.loss{color:var(--danger)}
+@keyframes flashGain{0%{transform:scale(1)}30%{transform:scale(1.08);color:var(--money)}100%{transform:scale(1)}}
+@keyframes flashLoss{0%{transform:scale(1)}30%{transform:scale(1.06);color:var(--danger)}100%{transform:scale(1)}}
+.flash-gain{animation:flashGain 1.1s ease-out}
+.flash-loss{animation:flashLoss 1.1s ease-out}
+@media (prefers-reduced-motion:reduce){.flash-gain,.flash-loss{animation:none}}
+
+/* Ad banner (only when the Worker sets ads-enabled) */
+.adbar[hidden]{display:none}
+.adbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding:4px 8px calc(4px + env(safe-area-inset-bottom))}
+.adslot{width:100%;max-width:728px;min-height:50px;max-height:100px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.adslot .adsbygoogle{display:block;width:100%}
+/* --adbar-h is kept equal to the banner's rendered height by initAds(), so content and toasts clear it whatever size the ad fills. */
+body.has-ads #app{padding-bottom:calc(var(--adbar-h,60px) + 16px)}
+body.has-ads .toast{bottom:calc(var(--adbar-h,60px) + 12px)}
+
+/* Phones: let the stat labels wrap instead of truncating, and keep the title on one line */
+@media (max-width:420px){
+  .brand-title{font-size:20px}
+  .brand-sub{display:none}
+  .stat-label{white-space:normal;font-size:10.5px}
+  .stat{padding:9px 10px}
+}
+
+/* Larger touch targets and type on tablets (iPad portrait and up) */
+@media (min-width:700px){
+  body{font-size:17px}
+  #app{padding:0 20px calc(32px + env(safe-area-inset-bottom))}
+  .top{padding:18px 0 12px}
+  .brand-title{font-size:32px}
+  .brand-sub{font-size:13px}
+  .stats{gap:12px;margin-bottom:16px}
+  .stat{padding:14px 18px;gap:4px}
+  .stat-label{font-size:13px}
+  .stat-value{font-size:24px}
+  .stat .hint{font-size:13px}
+  .tabs button{font-size:18px;padding:14px 8px}
+  .tabs{margin-bottom:16px}
+  .players{grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+  .player{padding:16px 18px;gap:8px}
+  .player-head h3{font-size:22px}
+  .token{width:18px;height:18px}
+  .cash{font-size:40px}
+  .meta{font-size:14.5px}
+  .deed{width:18px;height:26px;font-size:11px}
+  .chip{font-size:11.5px;padding:5px 9px}
+  .add-card{font-size:18px;min-height:150px}
+  .groups{gap:14px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+  .group-head{font-size:15px;padding:9px 14px}
+  .group-head .set{font-size:13px}
+  .prop-row{padding:13px 14px}
+  .prop-name{font-size:18px}
+  .prop-name small{font-size:14px}
+  .prop-state{font-size:14.5px}
+  .owner{max-width:150px}
+  .house{width:12px;height:12px}
+  .hotel{width:28px;height:14px}
+  .tag{font-size:11.5px;padding:4px 7px}
+  .swatch{width:14px;height:20px}
+  .picon{width:24px;height:24px}
+  .log-row{font-size:15.5px;padding:11px 14px}
+  .log-time{font-size:13.5px}
+  .sheet{max-width:720px}
+  .sheet-head{padding:14px 18px}
+  .sheet-head h2{font-size:24px}
+  .sheet-body{padding:18px;gap:16px}
+  .icon-btn{width:44px;height:44px;font-size:20px}
+  .btn{font-size:16px;padding:12px 16px;min-height:50px}
+  .btn.sm{font-size:15px;padding:9px 12px;min-height:40px}
+  .field label,.label{font-size:13px}
+  input[type=text],input[type=number],select{font-size:18px;padding:12px 14px;min-height:50px}
+  .quick .btn{font-size:15px;min-height:40px;padding:9px 12px}
+  .check{font-size:16px}
+  .check input{width:24px;height:24px}
+  .check-text small{font-size:14px}
+  .field.indent{margin-left:34px}
+  .settings-group h3{font-size:17px}
+  .actions-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .actions-grid .btn{min-height:78px;padding:12px 14px}
+  .actions-grid .btn small{font-size:13px}
+  .callout{font-size:16px;padding:12px 14px}
+  .big-money{font-size:44px}
+  .stepper button{width:48px;height:48px;font-size:24px}
+  .stepper span{min-width:100px;font-size:14px}
+  .manage-row{padding:12px 14px}
+  .manage-title button{font-size:19px}
+  .mini{padding:10px 12px}
+  .mini-name{font-size:17px}
+  .pick-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pick{min-height:54px}
+  .ptiles{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .ptile{min-height:56px}
+  .ptile-cash{font-size:14px}
+  .pick-name{font-size:17px}
+  .pick-right{font-size:14px}
+  table.rent{font-size:16px}
+  table.rent td{padding:7px 0}
+  .deed-card h3{font-size:26px}
+  .deed-card .facts,.deed-card .facts b{font-size:15px}
+  .toast{font-size:16px;padding:14px 18px}
+  .toast-btn{font-size:13px}
+  .fx-pill{font-size:16px;padding:7px 13px}
+  .fx-delta{font-size:18px}
+}
+</style>
+
+<div id="app">
+  <header class="top">
+    <div class="brand"><span class="brand-title">Monopoly Banker</span><span class="brand-sub">Cash · Deeds · Buildings · Free Parking</span><span id="offlineChip" class="offline" hidden>Offline · saved on this device</span></div>
+    <div class="top-actions">
+      <button class="btn sm undo" data-act="undoAsk" id="undoBtn" title="Undo the last action">↶ Undo</button>
+      <button class="btn sm ghost" data-act="settings">Settings</button>
+    </div>
+  </header>
+  <section class="stats" id="stats"></section>
+  <nav class="tabs" id="tabs"></nav>
+  <main id="main"></main>
+</div>
+<aside id="adBar" class="adbar" hidden aria-label="Advertisement">
+  <!-- Filled by initAds() with a Google AdSense display unit when the Worker sets ads-enabled, adsense-client and adsense-slot. -->
+  <div id="adSlot" class="adslot"></div>
+</aside>
+<div id="sheetRoot"></div>
+<div id="fxRoot" aria-hidden="true"></div>
+<div id="toastRoot"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- Board data (standard US edition) ---------- */
+const GROUPS = {
+  brown:{name:'Brown',color:'#8B4A2B',text:'#FFFFFF'},
+  lightblue:{name:'Light Blue',color:'#9CD5F2',text:'#10243A'},
+  pink:{name:'Pink',color:'#D63C8F',text:'#FFFFFF'},
+  orange:{name:'Orange',color:'#F0871B',text:'#2B1500'},
+  red:{name:'Red',color:'#DF2A2A',text:'#FFFFFF'},
+  yellow:{name:'Yellow',color:'#F2D42B',text:'#2B2400'},
+  green:{name:'Green',color:'#1FA553',text:'#FFFFFF'},
+  darkblue:{name:'Dark Blue',color:'#1D5EB8',text:'#FFFFFF'},
+  rr:{name:'Railroads',color:'#2A2A2A',text:'#FFFFFF'},
+  util:{name:'Utilities',color:'#8E9AA0',text:'#FFFFFF'}
+};
+const GROUP_ORDER = ['brown','lightblue','pink','orange','red','yellow','green','darkblue','rr','util'];
+const PROPS = [
+  {id:'med',name:'Mediterranean Avenue',type:'street',group:'brown',price:60,rent:[2,10,30,90,160,250],house:50},
+  {id:'bal',name:'Baltic Avenue',type:'street',group:'brown',price:60,rent:[4,20,60,180,320,450],house:50},
+  {id:'rr1',name:'Reading Railroad',type:'rr',group:'rr',price:200},
+  {id:'ori',name:'Oriental Avenue',type:'street',group:'lightblue',price:100,rent:[6,30,90,270,400,550],house:50},
+  {id:'ver',name:'Vermont Avenue',type:'street',group:'lightblue',price:100,rent:[6,30,90,270,400,550],house:50},
+  {id:'con',name:'Connecticut Avenue',type:'street',group:'lightblue',price:120,rent:[8,40,100,300,450,600],house:50},
+  {id:'stc',name:'St. Charles Place',type:'street',group:'pink',price:140,rent:[10,50,150,450,625,750],house:100},
+  {id:'ele',name:'Electric Company',type:'util',group:'util',price:150},
+  {id:'sta',name:'States Avenue',type:'street',group:'pink',price:140,rent:[10,50,150,450,625,750],house:100},
+  {id:'vir',name:'Virginia Avenue',type:'street',group:'pink',price:160,rent:[12,60,180,500,700,900],house:100},
+  {id:'rr2',name:'Pennsylvania Railroad',type:'rr',group:'rr',price:200},
+  {id:'stj',name:'St. James Place',type:'street',group:'orange',price:180,rent:[14,70,200,550,750,950],house:100},
+  {id:'ten',name:'Tennessee Avenue',type:'street',group:'orange',price:180,rent:[14,70,200,550,750,950],house:100},
+  {id:'ny',name:'New York Avenue',type:'street',group:'orange',price:200,rent:[16,80,220,600,800,1000],house:100},
+  {id:'ken',name:'Kentucky Avenue',type:'street',group:'red',price:220,rent:[18,90,250,700,875,1050],house:150},
+  {id:'ind',name:'Indiana Avenue',type:'street',group:'red',price:220,rent:[18,90,250,700,875,1050],house:150},
+  {id:'ill',name:'Illinois Avenue',type:'street',group:'red',price:240,rent:[20,100,300,750,925,1100],house:150},
+  {id:'rr3',name:'B. & O. Railroad',type:'rr',group:'rr',price:200},
+  {id:'atl',name:'Atlantic Avenue',type:'street',group:'yellow',price:260,rent:[22,110,330,800,975,1150],house:150},
+  {id:'ven',name:'Ventnor Avenue',type:'street',group:'yellow',price:260,rent:[22,110,330,800,975,1150],house:150},
+  {id:'wat',name:'Water Works',type:'util',group:'util',price:150},
+  {id:'mar',name:'Marvin Gardens',type:'street',group:'yellow',price:280,rent:[24,120,360,850,1025,1200],house:150},
+  {id:'pac',name:'Pacific Avenue',type:'street',group:'green',price:300,rent:[26,130,390,900,1100,1275],house:200},
+  {id:'nc',name:'North Carolina Avenue',type:'street',group:'green',price:300,rent:[26,130,390,900,1100,1275],house:200},
+  {id:'pa',name:'Pennsylvania Avenue',type:'street',group:'green',price:320,rent:[28,150,450,1000,1200,1400],house:200},
+  {id:'rr4',name:'Short Line',type:'rr',group:'rr',price:200},
+  {id:'park',name:'Park Place',type:'street',group:'darkblue',price:350,rent:[35,175,500,1100,1300,1500],house:200},
+  {id:'bw',name:'Boardwalk',type:'street',group:'darkblue',price:400,rent:[50,200,600,1400,1700,2000],house:200}
+];
+const byId = Object.fromEntries(PROPS.map(p=>[p.id,p]));
+const PLAYER_COLORS = ['#D62828','#1D6FB8','#2A9D3F','#E58E1A','#7B3FB5','#0E9AA7','#C2367A','#5C5C5C'];
+const HOUSE_SUPPLY = 32, HOTEL_SUPPLY = 12;
+const LS_KEY = 'monopoly-banker-v1';
+const SETTINGS_VERSION = 2;
+const ICONS = {
+  rr: '<svg class="picon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="13" rx="3"/><path d="M5 10h14M9 3V1.5h6V3"/><circle cx="9" cy="13" r="1" fill="currentColor"/><circle cx="15" cy="13" r="1" fill="currentColor"/><path d="M8 16l-2.5 5.5M16 16l2.5 5.5M7 21.5h10"/></svg>',
+  ele: '<svg class="picon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5a6.5 6.5 0 0 1 4.2 11.5c-.8.7-1.2 1.6-1.2 2.5H9c0-.9-.4-1.8-1.2-2.5A6.5 6.5 0 0 1 12 2.5z"/><path d="M9.5 19.5h5M10.5 22h3"/></svg>',
+  wat: '<svg class="picon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5S5.5 9.5 5.5 14.5a6.5 6.5 0 0 0 13 0C18.5 9.5 12 2.5 12 2.5z"/><path d="M9 14.5a3 3 0 0 0 3 3"/></svg>'
+};
+
+/* ---------- State ---------- */
+let state = null;
+let history = [];
+let fxQueue = [];
+const ui = { tab:'players', sheet:null, stack:[], form:{}, lastSheetKey:null };
+
+function defaultSettings(){
+  return { startingCash:1500, goSalary:200, incomeTax:200, luxuryTax:75, jailFine:50,
+           potRule:true, potSeed:0, enforceSupply:true, evenBuild:true, transferInterest:true, allowDebt:false };
+}
+function newGame(names, startingCash, opts){
+  const seed = Math.max(0, opts.potSeed||0);
+  state = {
+    v:1, settingsV:SETTINGS_VERSION,
+    players: names.map((n,i)=>({id:'p'+(i+1), name:n, color:PLAYER_COLORS[i%PLAYER_COLORS.length], cash:startingCash, bankrupt:false})),
+    nextId: names.length+1,
+    props: Object.fromEntries(PROPS.map(p=>[p.id,{owner:null,level:0,mortgaged:false}])),
+    pot:seed, turn:'p1',
+    settings: Object.assign(defaultSettings(), {startingCash, potRule:!!opts.potRule, potSeed:seed}),
+    log: [{t:Date.now(), msg:`New game — ${names.length} players start with ${money(startingCash)}${seed?`; the bank seeded Free Parking with ${money(seed)}`:''}`}]
+  };
+  history = [];
+  save();
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    if(data && data.state && Array.isArray(data.state.players)){
+      state = data.state; history = Array.isArray(data.history)?data.history:[];
+      state.settings = Object.assign(defaultSettings(), state.settings||{});
+      // Settings v2: Luxury Tax corrected from $100 to the standard $75 for games saved before the fix.
+      let migrated=false;
+      if(!(state.settingsV>=2)){ if(state.settings.luxuryTax===100) state.settings.luxuryTax=75; state.settingsV=2; migrated=true; }
+      state.props = state.props||{};
+      for(const p of PROPS) if(!state.props[p.id]) state.props[p.id]={owner:null,level:0,mortgaged:false};
+      if(typeof state.pot!=='number') state.pot=0;
+      if(!Array.isArray(state.log)) state.log=[];
+      ensureTurn();
+      if(migrated) save();
+    }
+  }catch(e){ state=null; history=[]; }
+}
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({state, history:history.slice(-30)})); }catch(e){} }
+
+/* ---------- Helpers ---------- */
+const $ = (sel, root=document)=>root.querySelector(sel);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n<0?'-':'') + '$' + Math.abs(Math.round(n)).toLocaleString('en-US');
+function num(v, def=0){ const n = Number(String(v??'').replace(/[^0-9.-]/g,'')); return Number.isFinite(n)?n:def; }
+function amt(v){ return Math.round(num(v,0)); }
+function player(pid){ return state.players.find(p=>p.id===pid); }
+function nameOf(pid){ if(pid==='bank') return 'the bank'; if(pid==='pot') return 'Free Parking'; const p=player(pid); return p?p.name:'?'; }
+function activePlayers(){ return state.players.filter(p=>!p.bankrupt); }
+function othersOf(pid){ return activePlayers().filter(p=>p.id!==pid); }
+function groupProps(g){ return PROPS.filter(p=>p.group===g); }
+function ownedBy(pid){ return PROPS.filter(p=>state.props[p.id].owner===pid); }
+function ownsGroup(pid,g){ return !!pid && groupProps(g).every(p=>state.props[p.id].owner===pid); }
+function groupOwner(g){ const o=state.props[groupProps(g)[0].id].owner; return ownsGroup(o,g)?o:null; }
+function countOwned(pid,type){ return PROPS.filter(p=>p.type===type && state.props[p.id].owner===pid).length; }
+function mortgageValue(p){ return p.price/2; }
+// 10% interest, rounded up. Integer division keeps 70 -> 7 (70*0.1 would give 7.000000000000001 and round up to 8).
+function interestOn(p){ return Math.ceil(mortgageValue(p)/10); }
+function unmortgageCost(p){ return mortgageValue(p) + interestOn(p); }
+function housesUsed(level){ return level===5?0:level; }
+function supply(){
+  let h=0, ho=0;
+  for(const p of PROPS){ const l=state.props[p.id].level; if(l===5) ho++; else h+=l; }
+  return { housesLeft:HOUSE_SUPPLY-h, hotelsLeft:HOTEL_SUPPLY-ho };
+}
+function netWorth(pid){
+  const p=player(pid); let w=p.cash;
+  for(const pr of ownedBy(pid)){ const s=state.props[pr.id]; w += s.mortgaged?mortgageValue(pr):pr.price; if(pr.type==='street') w += s.level*pr.house; }
+  return w;
+}
+function levelLabel(l){ return l===0?'No houses':l===5?'Hotel':`${l} house${l>1?'s':''}`; }
+function ensureTurn(){
+  const act=activePlayers();
+  if(!act.length){ state.turn=null; return; }
+  if(!act.some(p=>p.id===state.turn)) state.turn=act[0].id;
+}
+function rentInfo(id, dice){
+  const p=byId[id], s=state.props[id];
+  if(!s.owner) return {amount:0, note:'Owned by the bank — no rent.'};
+  if(s.mortgaged) return {amount:0, note:'Mortgaged — no rent is due.'};
+  if(p.type==='street'){
+    if(s.level>0) return {amount:p.rent[s.level], note:levelLabel(s.level)};
+    const mono=ownsGroup(s.owner,p.group);
+    return {amount: mono?p.rent[0]*2:p.rent[0], note: mono?'Unimproved, full color set — rent doubled':'Unimproved'};
+  }
+  if(p.type==='rr'){ const n=countOwned(s.owner,'rr'); return {amount:25*Math.pow(2,n-1), note:`${nameOf(s.owner)} owns ${n} railroad${n>1?'s':''}`}; }
+  const n=countOwned(s.owner,'util'); const mult=n===2?10:4;
+  return {amount: dice?mult*dice:0, note:`${mult}× the dice roll${n===2?' (owns both utilities)':''}`, needsDice:true};
+}
+function buildCheck(id, newLevel){
+  const p=byId[id], s=state.props[id];
+  if(p.type!=='street') return 'Only streets can have buildings.';
+  if(!s.owner) return 'Nobody owns this property yet.';
+  if(newLevel<0||newLevel>5) return 'Nothing more to do here.';
+  if(newLevel===s.level) return 'No change.';
+  const owner=player(s.owner), sibs=groupProps(p.group), g=GROUPS[p.group].name;
+  if(newLevel>s.level){
+    if(!ownsGroup(s.owner,p.group)) return `${owner.name} must own every ${g} property before building.`;
+    if(sibs.some(q=>state.props[q.id].mortgaged)) return `Can't build while a ${g} property is mortgaged.`;
+    const cost=(newLevel-s.level)*p.house;
+    if(!state.settings.allowDebt && owner.cash<cost) return `${owner.name} needs ${money(cost)} but only has ${money(owner.cash)}.`;
+  }
+  if(state.settings.evenBuild){
+    for(const q of sibs){ if(q.id===id) continue; const ql=state.props[q.id].level;
+      if(newLevel-ql>1) return `Build evenly: ${q.name} has ${levelLabel(ql).toLowerCase()}.`;
+      if(ql-newLevel>1) return `Sell evenly: ${q.name} still has ${levelLabel(ql).toLowerCase()}.`; }
+  }
+  if(state.settings.enforceSupply){
+    const {housesLeft, hotelsLeft}=supply();
+    const dh=housesUsed(newLevel)-housesUsed(s.level), dho=(newLevel===5?1:0)-(s.level===5?1:0);
+    if(dh>housesLeft) return housesLeft>0 ? `The bank only has ${housesLeft} house${housesLeft===1?'':'s'} left.` : 'The bank is out of houses.';
+    if(dho>hotelsLeft) return 'The bank is out of hotels.';
+  }
+  return null;
+}
+function mortgageCheck(id){
+  const p=byId[id], s=state.props[id];
+  if(!s.owner) return 'Nobody owns this property.';
+  if(s.mortgaged) return 'Already mortgaged.';
+  if(p.type==='street' && groupProps(p.group).some(q=>state.props[q.id].level>0)) return `Sell all buildings in the ${GROUPS[p.group].name} set before mortgaging.`;
+  return null;
+}
+function canPay(pid, amount){
+  if(state.settings.allowDebt) return null;
+  const p=player(pid);
+  if(p.cash>=amount) return null;
+  return `${p.name} only has ${money(p.cash)} — short ${money(amount-p.cash)}. Mortgage or sell buildings first, or declare bankruptcy.`;
+}
+function moveCash(from, to, amount){
+  if(from==='pot') state.pot-=amount; else if(from!=='bank') player(from).cash-=amount;
+  if(to==='pot') state.pot+=amount; else if(to!=='bank') player(to).cash+=amount;
+  if(amount>0) fxQueue.push({from, to, amount});
+}
+
+/* ---------- Commit / undo ---------- */
+function commit(msg, fn){
+  const snap=JSON.stringify(state);
+  fxQueue=[];
+  let err=null;
+  try{ err=fn(); }catch(e){ err='Something went wrong: '+e.message; }
+  if(err){ state=JSON.parse(snap); fxQueue=[]; toast(err,'error'); return false; }
+  history.push(snap); if(history.length>100) history.shift();
+  state.log.unshift({t:Date.now(), msg}); if(state.log.length>500) state.log.length=500;
+  const fx=fxQueue; fxQueue=[];
+  save(); render(); toast(msg, null, {undo:true});
+  if(fx.length) requestAnimationFrame(()=>playMoneyFx(fx));
+  return true;
+}
+function undo(){
+  if(!history.length){ toast('Nothing to undo'); return false; }
+  const last = state.log[0] ? state.log[0].msg : 'last action';
+  state=JSON.parse(history.pop()); ensureTurn(); save(); render(); toast('Undid: '+last);
+  return true;
+}
+
+/* ---------- Game actions ---------- */
+function doGo(pid){
+  const sal=state.settings.goSalary;
+  commit(`${nameOf(pid)} passed GO and collected ${money(sal)}`, ()=>{ moveCash('bank',pid,sal); }) && closeSheet();
+}
+function doCollect(pid, source, amount, reason){
+  if(amount<=0) return toast('Enter an amount','error');
+  const why = reason?` (${reason})`:'';
+  if(source==='all'){
+    const others=othersOf(pid);
+    if(!others.length) return toast('No other players to collect from','error');
+    commit(`${nameOf(pid)} collected ${money(amount)} from each player${why} — ${money(amount*others.length)} total`, ()=>{
+      for(const q of others){ const e=canPay(q.id,amount); if(e) return e; }
+      for(const q of others) moveCash(q.id,pid,amount);
+    }) && closeSheet();
+  } else {
+    commit(`${nameOf(pid)} collected ${money(amount)} from the bank${why}`, ()=>{ moveCash('bank',pid,amount); }) && closeSheet();
+  }
+}
+function doPayBank(pid, amount, toPot, label){
+  if(amount<=0) return toast('Enter an amount','error');
+  const what = label?label:'';
+  commit(`${nameOf(pid)} paid ${money(amount)}${what?' '+what:''} to ${toPot?'Free Parking':'the bank'}`, ()=>{
+    const e=canPay(pid,amount); if(e) return e;
+    moveCash(pid, toPot?'pot':'bank', amount);
+  }) && closeSheet();
+}
+function doPayPlayer(pid, to, amount){
+  if(amount<=0) return toast('Enter an amount','error');
+  if(to==='all'){
+    const others=othersOf(pid);
+    if(!others.length) return toast('No other players to pay','error');
+    commit(`${nameOf(pid)} paid ${money(amount)} to each player — ${money(amount*others.length)} total`, ()=>{
+      const e=canPay(pid,amount*others.length); if(e) return e;
+      for(const q of others) moveCash(pid,q.id,amount);
+    }) && closeSheet();
+  } else {
+    if(!player(to)||to===pid) return toast('Pick a player to pay','error');
+    commit(`${nameOf(pid)} paid ${money(amount)} to ${nameOf(to)}`, ()=>{
+      const e=canPay(pid,amount); if(e) return e;
+      moveCash(pid,to,amount);
+    }) && closeSheet();
+  }
+}
+function doPayRent(pid, propId, dice){
+  const p=byId[propId]; if(!p) return toast('Pick the property you landed on','error');
+  const s=state.props[propId];
+  if(!s.owner||s.owner===pid) return toast('No rent is due here','error');
+  const info=rentInfo(propId, dice);
+  if(info.needsDice && !dice) return toast('Enter the dice roll first','error');
+  if(info.amount<=0) return toast(info.note,'error');
+  commit(`${nameOf(pid)} paid ${money(info.amount)} rent to ${nameOf(s.owner)} for ${p.name}`, ()=>{
+    const e=canPay(pid,info.amount); if(e) return e;
+    moveCash(pid,s.owner,info.amount);
+  }) && closeSheet();
+}
+function doBuy(pid, propId, price){
+  const p=byId[propId]; if(!p) return toast('Pick a property','error');
+  if(!player(pid)) return toast('Pick a buyer','error');
+  if(state.props[propId].owner) return toast(`${p.name} is already owned by ${nameOf(state.props[propId].owner)}`,'error');
+  if(price<0) return toast('Enter a price','error');
+  const note = price!==p.price ? ` (list price ${money(p.price)})` : '';
+  commit(`${nameOf(pid)} bought ${p.name} for ${money(price)}${note}`, ()=>{
+    const e=canPay(pid,price); if(e) return e;
+    moveCash(pid,'bank',price); state.props[propId].owner=pid;
+  }) && closeSheet();
+}
+function doSetLevel(propId, newLevel){
+  const err=buildCheck(propId,newLevel); if(err) return toast(err,'error');
+  const p=byId[propId], s=state.props[propId], owner=s.owner;
+  if(newLevel>s.level){
+    const cost=(newLevel-s.level)*p.house;
+    commit(`${nameOf(owner)} built ${newLevel===5?'a hotel':`house ${newLevel}`} on ${p.name} for ${money(cost)}`, ()=>{ moveCash(owner,'bank',cost); s.level=newLevel; });
+  } else {
+    const refund=(s.level-newLevel)*p.house/2;
+    commit(`${nameOf(owner)} sold ${s.level===5?'the hotel':'a house'} on ${p.name} back to the bank for ${money(refund)}`, ()=>{ moveCash('bank',owner,refund); s.level=newLevel; });
+  }
+}
+function doMortgage(propId){
+  const err=mortgageCheck(propId); if(err) return toast(err,'error');
+  const p=byId[propId], s=state.props[propId], v=mortgageValue(p);
+  commit(`${nameOf(s.owner)} mortgaged ${p.name} for ${money(v)}`, ()=>{ moveCash('bank',s.owner,v); s.mortgaged=true; });
+}
+function doUnmortgage(propId){
+  const p=byId[propId], s=state.props[propId];
+  if(!s.owner||!s.mortgaged) return toast('Not mortgaged','error');
+  const cost=unmortgageCost(p);
+  commit(`${nameOf(s.owner)} lifted the mortgage on ${p.name} for ${money(cost)} (10% interest)`, ()=>{
+    const e=canPay(s.owner,cost); if(e) return e;
+    moveCash(s.owner,'bank',cost); s.mortgaged=false;
+  });
+}
+function doTransfer(propId, to, cash, payer, chargeInterest){
+  const p=byId[propId], s=state.props[propId], from=s.owner;
+  if(!from) return toast('The bank owns this property — use Buy instead','error');
+  if(to!=='bank' && (!player(to)||to===from)) return toast('Pick who receives the property','error');
+  if(p.type==='street' && s.level>0) return toast('Sell the buildings back to the bank before transferring','error');
+  if(cash<0) return toast('Cash can\'t be negative','error');
+  const interest = (to!=='bank' && s.mortgaged && chargeInterest) ? interestOn(p) : 0;
+  let msg = to==='bank' ? `${nameOf(from)} returned ${p.name} to the bank` : `${nameOf(from)} gave ${p.name} to ${nameOf(to)}`;
+  if(cash>0 && to!=='bank') msg += payer==='new' ? ` for ${money(cash)}` : `, paying ${money(cash)} with it`;
+  if(interest) msg += ` — ${nameOf(to)} paid ${money(interest)} mortgage interest`;
+  commit(msg, ()=>{
+    if(to!=='bank'){
+      if(cash>0){ const payerId = payer==='new'?to:from, receiver = payer==='new'?from:to; const e=canPay(payerId,cash); if(e) return e; moveCash(payerId,receiver,cash); }
+      if(interest){ const e=canPay(to,interest); if(e) return e; moveCash(to,'bank',interest); }
+      s.owner=to;
+    } else { s.owner=null; s.mortgaged=false; }
+  }) && closeSheet();
+}
+function doCollectPot(pid){
+  if(state.pot<=0) return toast('Free Parking is empty','error');
+  const v=state.pot, seed=state.settings.potSeed||0;
+  commit(`${nameOf(pid)} collected ${money(v)} from Free Parking${seed?` — the bank re-seeded it with ${money(seed)}`:''}`, ()=>{
+    moveCash('pot',pid,v);
+    if(seed) moveCash('bank','pot',seed);
+  }) && closeSheet();
+}
+function doAddPot(amount){
+  if(amount<=0) return toast('Enter an amount','error');
+  commit(`Bank added ${money(amount)} to Free Parking`, ()=>{ moveCash('bank','pot',amount); }) && closeSheet();
+}
+function doBankrupt(pid, creditor){
+  const p=player(pid); if(!p) return;
+  if(creditor!=='bank' && (!player(creditor)||creditor===pid||player(creditor).bankrupt)) return toast('Pick who is owed','error');
+  const owned=ownedBy(pid);
+  commit(`${p.name} went bankrupt — everything went to ${nameOf(creditor)}`, ()=>{
+    let buildingCash=0;
+    for(const pr of owned){
+      const s=state.props[pr.id];
+      if(pr.type==='street' && s.level>0){ buildingCash += s.level*pr.house/2; s.level=0; }
+      if(creditor==='bank'){ s.owner=null; s.mortgaged=false; }
+      else { s.owner=creditor; if(s.mortgaged && state.settings.transferInterest) player(creditor).cash -= interestOn(pr); }
+    }
+    if(creditor!=='bank') player(creditor).cash += Math.max(0,p.cash) + buildingCash;
+    p.cash=0; p.bankrupt=true; ensureTurn();
+  }) && closeSheet();
+}
+function nextTurn(){
+  if(!state) return;
+  const act=activePlayers(); if(act.length<2) return;
+  let i=act.findIndex(p=>p.id===state.turn); state.turn=act[(i+1)%act.length].id;
+  save(); renderStats(); renderMain();
+}
+
+/* ---------- Rendering ---------- */
+function render(){ renderStats(); renderTabs(); renderMain(); renderSheet(); }
+
+function renderStats(){
+  const el=$('#stats');
+  $('#undoBtn').disabled = !state || !history.length;
+  if(!state){ el.innerHTML=''; return; }
+  const {housesLeft,hotelsLeft}=supply();
+  const cur=state.turn?player(state.turn):null;
+  el.innerHTML = `
+    <button class="stat pot" data-act="potSheet"><span class="stat-label">Free Parking</span><span class="stat-value">${money(state.pot)}</span><span class="hint">tap to pay out or add</span></button>
+    <div class="stat bank"><span class="stat-label">Bank supply</span><span class="stat-value">${housesLeft} / ${hotelsLeft}</span><span class="hint">houses / hotels left</span></div>
+    <button class="stat turn" data-act="nextTurn"><span class="stat-label">Turn</span><span class="stat-value" style="font-family:Oswald,Impact,sans-serif">${cur?esc(cur.name):'—'}</span><span class="hint">tap for next player</span></button>`;
+}
+function renderTabs(){
+  const el=$('#tabs');
+  if(!state){ el.innerHTML=''; return; }
+  el.innerHTML = [['players','Players'],['props','Properties'],['log','Log']].map(([k,l])=>`<button data-act="tab" data-tab="${k}" class="${ui.tab===k?'active':''}">${l}</button>`).join('');
+}
+function renderMain(){
+  const el=$('#main');
+  if(!state){
+    el.innerHTML = `<div class="empty"><h2>No game in progress</h2><p>Set up the players and the banker will track cash, deeds, mortgages, houses and hotels, and the Free Parking pot.</p><button class="btn primary" data-act="setup">Set up a game</button></div>`;
+    return;
+  }
+  if(ui.tab==='players') el.innerHTML=viewPlayers();
+  else if(ui.tab==='props') el.innerHTML=viewProps();
+  else el.innerHTML=viewLog();
+}
+function deedChips(owned){
+  return owned.map(p=>{ const s=state.props[p.id]; const l=s.level;
+    return `<span class="deed ${s.mortgaged?'mort':''}" style="--gc:${GROUPS[p.group].color}" title="${esc(p.name)}${s.mortgaged?' (mortgaged)':''}">${l===5?'H':l>0?l:''}</span>`; }).join('');
+}
+function viewPlayers(){
+  const cards = state.players.map(p=>{
+    const owned=ownedBy(p.id);
+    return `<button class="player ${state.turn===p.id&&!p.bankrupt?'is-turn':''} ${p.bankrupt?'is-bankrupt':''}" data-act="playerSheet" data-pid="${p.id}" style="--pc:${p.color}">
+      <div class="player-head"><span class="token"></span><h3>${esc(p.name)}</h3>${p.bankrupt?'<span class="tag mort">Bankrupt</span>':state.turn===p.id?'<span class="chip">Turn</span>':''}</div>
+      <div class="cash ${p.cash<0?'neg':''}">${money(p.cash)}</div>
+      <div class="meta">Worth ${money(netWorth(p.id))} · ${owned.length} propert${owned.length===1?'y':'ies'}</div>
+      <div class="deeds">${deedChips(owned)}</div>
+    </button>`; }).join('');
+  return `<div class="players">${cards}<button class="add-card" data-act="addPlayer">+ Add player</button></div>`;
+}
+function bldIcons(p,s){
+  if(p.type!=='street'||s.level===0) return '';
+  if(s.level===5) return '<span class="bld"><i class="hotel"></i></span>';
+  return `<span class="bld">${'<i class="house"></i>'.repeat(s.level)}</span>`;
+}
+function ownerBadge(pid){
+  if(!pid) return '<span class="tag">Bank</span>';
+  const p=player(pid); return `<span class="owner"><span class="token" style="--pc:${p.color}"></span>${esc(p.name)}</span>`;
+}
+/* Tint a row with a transparent wash of the property's color; railroads and utilities stay on the plain surface with an icon. */
+function propTint(p){
+  const c=GROUPS[p.group].color;
+  return p.type==='street' ? `--gc:${c};--tint:${c}26;--tint-strong:${c}59` : `--gc:${c};--tint:var(--surface);--tint-strong:${c}26`;
+}
+function propIcon(p){
+  if(p.type==='rr') return ICONS.rr;
+  if(p.type==='util') return p.id==='ele'?ICONS.ele:ICONS.wat;
+  return `<span class="swatch" style="--gc:${GROUPS[p.group].color}"></span>`;
+}
+function viewProps(){
+  return `<div class="groups">${GROUP_ORDER.map(g=>{
+    const G=GROUPS[g], items=groupProps(g), setOwner=groupOwner(g);
+    return `<section class="group"><div class="group-head" style="--gc:${G.color};--gtext:${G.text}"><span>${G.name}</span>${setOwner?`<span class="set">Full set · ${esc(nameOf(setOwner))}</span>`:''}</div>
+      ${items.map(p=>{ const s=state.props[p.id];
+        return `<button class="prop-row" data-act="propSheet" data-id="${p.id}" style="${propTint(p)}"><span class="prop-name">${p.type!=='street'?propIcon(p):''}<span class="prop-title">${esc(p.name)}</span><small>${money(p.price)}</small></span>
+          <span class="prop-state">${bldIcons(p,s)}${s.mortgaged?'<span class="tag mort">Mortgaged</span>':''}${ownerBadge(s.owner)}</span></button>`; }).join('')}
+    </section>`; }).join('')}</div>`;
+}
+function viewLog(){
+  if(!state.log.length) return '<div class="callout">Nothing has happened yet.</div>';
+  return `<div class="log-tools"><span class="label">${state.log.length} entries · newest first</span><button class="btn sm undo" data-act="undoAsk" ${history.length?'':'disabled'}>↶ Undo last</button></div>
+    <div class="log">${state.log.map(e=>`<div class="log-row"><span class="log-time">${fmtTime(e.t)}</span><span>${esc(e.msg)}</span></div>`).join('')}</div>`;
+}
+function fmtTime(t){ const d=new Date(t); return d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); }
+
+/* ---------- Money movement effects ---------- */
+// Timings in ms. The pill flight, the stagger between several transfers, when the recipient lights up, and how long labels linger.
+const FX = { pill:1000, stagger:175, arrive:775, delta:1625, flash:1150 };
+function visibleEl(el){
+  if(!el) return null;
+  const r=el.getBoundingClientRect();
+  if(r.width===0||r.height===0||r.bottom<0||r.top>window.innerHeight) return null;
+  return el;
+}
+function anchorFor(who){
+  if(who==='bank') return visibleEl($('#stats .stat.bank')) || visibleEl($('.brand'));
+  if(who==='pot') return visibleEl($('#stats .stat.pot'));
+  if(ui.sheet && ui.sheet.params && ui.sheet.params.pid===who){ const m=visibleEl($('#sheetRoot .big-money')); if(m) return m; }
+  return visibleEl($(`#main [data-pid="${who}"] .cash`)) || visibleEl($(`#main [data-pid="${who}"]`));
+}
+function moneyEl(anchor){
+  if(!anchor) return null;
+  if(anchor.classList.contains('cash')||anchor.classList.contains('big-money')) return anchor;
+  return anchor.querySelector('.cash, .big-money, .stat-value');
+}
+function flash(anchor, kind){
+  const el=moneyEl(anchor); if(!el) return;
+  el.classList.remove('flash-gain','flash-loss');
+  void el.offsetWidth;
+  el.classList.add(kind==='gain'?'flash-gain':'flash-loss');
+  setTimeout(()=>el.classList.remove('flash-gain','flash-loss'), FX.flash);
+}
+function floatDelta(anchor, text, kind, delay, reduce){
+  if(!anchor) return;
+  const r=anchor.getBoundingClientRect();
+  const el=document.createElement('div'); el.className=`fx-delta ${kind}`; el.textContent=text;
+  $('#fxRoot').appendChild(el);
+  const x=Math.min(r.right-8, window.innerWidth-70), y=r.top;
+  const rise = reduce ? 0 : 28;
+  const anim=el.animate([
+    {transform:`translate(${x}px,${y}px) translate(-100%,0)`, opacity:0},
+    {transform:`translate(${x}px,${y-rise*0.35}px) translate(-100%,0)`, opacity:1, offset:.2},
+    {transform:`translate(${x}px,${y-rise*0.8}px) translate(-100%,0)`, opacity:1, offset:.7},
+    {transform:`translate(${x}px,${y-rise}px) translate(-100%,0)`, opacity:0}
+  ], {duration:reduce?1100:FX.delta, delay, easing:'ease-out', fill:'forwards'});
+  anim.onfinish=()=>el.remove();
+}
+function playMoneyFx(fx){
+  if(!fx||!fx.length||!$('#fxRoot')) return;
+  if(typeof Element==='undefined' || !Element.prototype.animate) return; // no Web Animations (very old browsers, test DOMs): skip the effects
+  if(ui.sheet) return; // a sheet is still covering the board (e.g. building several houses): skip the flight rather than animate over the menu
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  fx.slice(0,6).forEach((f,i)=>{
+    const delay=i*FX.stagger;
+    const a=anchorFor(f.from), b=anchorFor(f.to);
+    setTimeout(()=>{ flash(a,'loss'); if(f.from!=='bank') floatDelta(a,'−'+money(f.amount),'loss',0,reduce); }, delay);
+    const arrive = reduce ? delay : delay+FX.arrive;
+    setTimeout(()=>{ flash(b,'gain'); if(f.to!=='bank') floatDelta(b,'+'+money(f.amount),'gain',0,reduce); }, arrive);
+    if(reduce || !a || !b || a===b) return;
+    const ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect();
+    const x0=ra.left+ra.width/2, y0=ra.top+ra.height/2, x1=rb.left+rb.width/2, y1=rb.top+rb.height/2;
+    const pill=document.createElement('div'); pill.className='fx-pill'; pill.textContent=money(f.amount);
+    $('#fxRoot').appendChild(pill);
+    const anim=pill.animate([
+      {transform:`translate(${x0}px,${y0}px) translate(-50%,-50%) scale(.85)`, opacity:0},
+      {transform:`translate(${x0}px,${y0}px) translate(-50%,-50%) scale(1)`, opacity:1, offset:.15},
+      {transform:`translate(${(x0+x1)/2}px,${Math.min(y0,y1)-48}px) translate(-50%,-50%) scale(1.05)`, opacity:1, offset:.55},
+      {transform:`translate(${x1}px,${y1}px) translate(-50%,-50%) scale(.8)`, opacity:0}
+    ], {duration:FX.pill, delay, easing:'cubic-bezier(.45,0,.2,1)', fill:'forwards'});
+    anim.onfinish=()=>pill.remove();
+  });
+}
+
+/* ---------- Sheets ---------- */
+function openSheet(kind, params={}){ if(ui.sheet) ui.stack.push(ui.sheet); ui.sheet={kind,params}; ui.form=initForm(kind,params); renderSheet(); }
+function back(){ ui.sheet=ui.stack.pop()||null; if(ui.sheet) ui.form=initForm(ui.sheet.kind, ui.sheet.params); renderSheet(); }
+function closeSheet(){ ui.sheet=null; ui.stack=[]; renderSheet(); }
+
+function initForm(kind, params){
+  const s=state, pid=params.pid, id=params.id;
+  switch(kind){
+    case 'collect': return {source:'bank', amount:'', reason:''};
+    case 'payBank': return {amount:'', toPot: !!s.settings.potRule, label:''};
+    case 'payPlayer': { const o=othersOf(pid); return {to: o.length?o[0].id:'all', amount:''}; }
+    case 'rent': return {propId:'', dice:''};
+    case 'buy': return {propId:'', price:''};
+    case 'trade': { const from=s.props[id].owner; const o=othersOf(from); return {to: o.length?o[0].id:'bank', cash:'', payer:'new', interest:true}; }
+    case 'bankrupt': return {creditor:'bank'};
+    case 'editPlayer': { const p=player(pid); return {name:p.name, color:p.color}; }
+    case 'addPlayer': return {name:'', cash:s.settings.startingCash};
+    case 'pot': return {to:'', add:''};
+    case 'settings': return Object.assign({}, s.settings, {potSeedOn: s.settings.potSeed>0, potSeed: s.settings.potSeed>0?s.settings.potSeed:50});
+    case 'setup': return {names:['Player 1','Player 2','Player 3','Player 4'], startingCash:1500, potRule:true, potSeedOn:false};
+    case 'prop': { const a=activePlayers(); return {buyer: s.turn||(a.length?a[0].id:''), price: byId[id].price}; }
+    default: return {};
+  }
+}
+
+function renderSheet(){
+  const root=$('#sheetRoot');
+  if(!ui.sheet){ root.innerHTML=''; ui.lastSheetKey=null; document.body.style.overflow=''; return; }
+  const {kind, params}=ui.sheet;
+  if(state && params.pid && !player(params.pid)){ closeSheet(); return; }
+  let view;
+  try{ view=SHEETS[kind](params, ui.form); }catch(e){ console.error(e); closeSheet(); return; }
+  // Keep the scroll position when the same sheet re-renders (e.g. after building a house), instead of jumping to the top.
+  const prevBody=$('.sheet-body', root); const prevScroll=prevBody?prevBody.scrollTop:0;
+  const key=kind+'|'+JSON.stringify(params);
+  const dismissable = !(kind==='setup' && !state);
+  root.innerHTML = `<div class="overlay" data-act="overlay"><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(view.title)}">
+    <div class="sheet-head">${ui.stack.length?'<button class="icon-btn" data-act="back" aria-label="Back">‹</button>':''}<h2>${esc(view.title)}</h2>${dismissable?'<button class="icon-btn" data-act="close" aria-label="Close">×</button>':''}</div>
+    <div class="sheet-body">${view.body}</div></div></div>`;
+  if(ui.lastSheetKey===key && prevScroll>0){ const b=$('.sheet-body', root); if(b) b.scrollTop=prevScroll; }
+  ui.lastSheetKey=key;
+  document.body.style.overflow='hidden';
+}
+function playerSelect(key, value, players, extra=''){
+  return `<select data-bind="${key}">${extra}${players.map(p=>`<option value="${p.id}" ${p.id===value?'selected':''}>${esc(p.name)} (${money(p.cash)})</option>`).join('')}</select>`;
+}
+/* One tappable tile per player, like the quick-amount buttons. Nothing is selected until tapped. */
+function playerTiles(key, value, players){
+  return `<div class="ptiles" role="radiogroup">${players.map(p=>`<button type="button" class="btn ptile ${p.id===value?'sel':''}" role="radio" aria-checked="${p.id===value}" style="--pc:${p.color};--pc-tint:${p.color}26" data-act="setField" data-key="${key}" data-value="${p.id}"><span class="token"></span><span class="ptile-name">${esc(p.name)}</span><span class="ptile-cash">${money(p.cash)}</span></button>`).join('')}</div>`;
+}
+function pickTile(p, right, opts={}){
+  const tag = opts.button ? 'button' : 'div';
+  return `<${tag} ${opts.button?`type="button" data-act="setField" data-key="${opts.key}" data-value="${p.id}"`:''} class="pick ${opts.selected?'sel':''}" style="${propTint(p)}">${propIcon(p)}<span class="pick-name">${esc(p.name)}</span><span class="pick-right">${right||''}</span></${tag}>`;
+}
+function propPicker(key, items, rightFn){
+  if(!items.length) return '<div class="callout">Nothing to choose from.</div>';
+  return `<div class="pick-list" role="listbox">${items.map(p=>pickTile(p, rightFn?rightFn(p):'', {button:true, key})).join('')}</div>`;
+}
+function pickedRow(p, right, key){
+  return `<div class="pick-sel">${pickTile(p, right, {selected:true})}<button type="button" class="btn sm ghost" data-act="setField" data-key="${key}" data-value="">Change</button></div>`;
+}
+function quick(key, items){ return `<div class="quick">${items.map(([label,val])=>`<button type="button" class="btn ${String(ui.form[key])===String(val)?'primary':''}" data-act="setField" data-key="${key}" data-value="${val}">${label}</button>`).join('')}</div>`; }
+function check(key, on, title, desc){
+  return `<label class="check"><input type="checkbox" data-bind="${key}" ${on?'checked':''}><span class="check-text"><b>${title}</b>${desc?`<small>${desc}</small>`:''}</span></label>`;
+}
+function stepper(p){
+  const s=state.props[p.id]; const down=buildCheck(p.id,s.level-1), up=buildCheck(p.id,s.level+1);
+  return `<span class="stepper"><button type="button" class="${down?'dim':''}" data-act="level" data-id="${p.id}" data-delta="-1" title="${esc(down||`Sell for ${money(p.house/2)}`)}" aria-label="Sell a building">−</button><span>${levelLabel(s.level)}</span><button type="button" class="${up?'dim':''}" data-act="level" data-id="${p.id}" data-delta="1" title="${esc(up||`Build for ${money(p.house)}`)}" aria-label="Build">+</button></span>`;
+}
+function mortgageBtn(p){
+  const s=state.props[p.id];
+  if(s.mortgaged) return `<button type="button" class="btn sm" data-act="unmortgage" data-id="${p.id}">Lift mortgage · ${money(unmortgageCost(p))}</button>`;
+  const err=mortgageCheck(p.id);
+  return `<button type="button" class="btn sm ${err?'dim':''}" data-act="mortgage" data-id="${p.id}" title="${esc(err||'')}">Mortgage · +${money(mortgageValue(p))}</button>`;
+}
+function ownedList(owned){
+  if(!owned.length) return '<div class="callout">No properties yet. Use <b>Buy property</b> when they land on one.</div>';
+  return `<div><div class="label" style="margin-bottom:6px">Properties</div><div class="mini-list">${owned.map(p=>{ const s=state.props[p.id];
+    return `<button class="mini" data-act="open" data-kind="prop" data-id="${p.id}" style="${propTint(p)}">${propIcon(p)}<span class="mini-name">${esc(p.name)}</span><span class="mini-state">${bldIcons(p,s)}${s.mortgaged?'<span class="tag mort">M</span>':''}</span></button>`; }).join('')}</div></div>`;
+}
+
+const SHEETS = {
+  setup(params, f){
+    const rows=f.names.map((n,i)=>`<div class="setup-row"><span class="token" style="--pc:${PLAYER_COLORS[i%PLAYER_COLORS.length]}"></span><input type="text" data-bind="name_${i}" value="${esc(n)}" placeholder="Player name" autocomplete="off"><button type="button" class="icon-btn" data-act="setupRemove" data-i="${i}" aria-label="Remove" ${f.names.length<=2?'disabled':''}>×</button></div>`).join('');
+    return {title:'New game', body:`
+      <div class="field"><label>Players (2–8)</label><div style="display:flex;flex-direction:column;gap:8px">${rows}</div></div>
+      ${f.names.length<8?'<button type="button" class="btn sm" data-act="setupAdd">+ Add another player</button>':''}
+      <div class="field"><label>Starting cash</label><input type="number" inputmode="numeric" class="money" data-bind="startingCash" value="${esc(f.startingCash)}"></div>
+      <section class="settings-group"><h3>House rules</h3>
+        ${check('potRule', f.potRule, 'Taxes and fines go to Free Parking', 'Pay bank defaults to the pot; you can switch it per payment.')}
+        ${check('potSeedOn', f.potSeedOn, 'Bank seeds Free Parking with $50', 'The pot starts with $50 and the bank refills it after every payout. Change the amount in Settings.')}
+      </section>
+      <button type="button" class="btn primary block" data-act="startGame">Start game</button>`};
+  },
+  player(params){
+    const p=player(params.pid), owned=ownedBy(p.id), sal=state.settings.goSalary;
+    if(p.bankrupt) return {title:p.name, body:`<div class="callout danger">${esc(p.name)} is bankrupt and out of the game.</div><button type="button" class="btn danger block" data-act="removePlayer" data-pid="${p.id}">Remove from the table</button>`};
+    return {title:p.name, body:`
+      <div class="row between">
+        <div><div class="label">Cash</div><div class="big-money ${p.cash<0?'neg':''}">${money(p.cash)}</div><div class="meta">Net worth ${money(netWorth(p.id))}</div></div>
+        <button type="button" class="btn sm ghost" data-act="open" data-kind="editPlayer">Rename / color</button>
+      </div>
+      <div class="actions-grid">
+        <button type="button" class="btn primary" data-act="go">Pass GO<small>+${money(sal)}</small></button>
+        <button type="button" class="btn" data-act="open" data-kind="collect">Collect<small>bank or players</small></button>
+        <button type="button" class="btn" data-act="open" data-kind="payBank">Pay bank<small>tax, fine, card</small></button>
+        <button type="button" class="btn" data-act="open" data-kind="rent">Pay rent<small>auto-calculated</small></button>
+        <button type="button" class="btn" data-act="open" data-kind="payPlayer">Pay a player<small>cash only</small></button>
+        <button type="button" class="btn" data-act="open" data-kind="buy">Buy property<small>from the bank</small></button>
+        <button type="button" class="btn" data-act="open" data-kind="manage">Build & mortgage<small>${owned.length} propert${owned.length===1?'y':'ies'}</small></button>
+        <button type="button" class="btn danger" data-act="open" data-kind="bankrupt">Bankrupt<small>hand over assets</small></button>
+      </div>
+      ${ownedList(owned)}`};
+  },
+  collect(params, f){
+    const p=player(params.pid), others=othersOf(p.id);
+    return {title:`${p.name} collects`, body:`
+      <div class="field"><label>From</label><select data-bind="source"><option value="bank" ${f.source==='bank'?'selected':''}>The bank</option><option value="all" ${f.source==='all'?'selected':''} ${others.length?'':'disabled'}>Every other player (${others.length})</option></select></div>
+      <div class="field"><label>Amount${f.source==='all'?' from each player':''}</label><input type="number" inputmode="numeric" class="money" data-bind="amount" value="${esc(f.amount)}" placeholder="0">
+      ${quick('amount', f.source==='all'?[['$10',10],['$20',20],['$50',50]]:[['$10',10],['$20',20],['$25',25],['$45',45],['$50',50],['$100',100],['$150',150],['$200',200]])}</div>
+      <div class="field"><label>Note (optional)</label><input type="text" data-bind="reason" value="${esc(f.reason)}" placeholder="e.g. Bank error in your favor"></div>
+      <button type="button" class="btn primary block" data-act="collect">Collect ${amt(f.amount)>0?money(f.source==='all'?amt(f.amount)*others.length:amt(f.amount)):''}</button>`};
+  },
+  payBank(params, f){
+    const p=player(params.pid), st=state.settings, tenPct=Math.round(netWorth(p.id)/10);
+    return {title:`${p.name} pays the bank`, body:`
+      <div class="field"><label>Amount</label><input type="number" inputmode="numeric" class="money" data-bind="amount" value="${esc(f.amount)}" placeholder="0">
+      <div class="quick">
+        <button type="button" class="btn" data-act="setPay" data-value="${st.incomeTax}" data-label="Income Tax">Income Tax ${money(st.incomeTax)}</button>
+        <button type="button" class="btn" data-act="setPay" data-value="${tenPct}" data-label="Income Tax (10%)">10% tax ${money(tenPct)}</button>
+        <button type="button" class="btn" data-act="setPay" data-value="${st.luxuryTax}" data-label="Luxury Tax">Luxury Tax ${money(st.luxuryTax)}</button>
+        <button type="button" class="btn" data-act="setPay" data-value="${st.jailFine}" data-label="Jail fine">Jail fine ${money(st.jailFine)}</button>
+        ${[15,50,100,150].map(v=>`<button type="button" class="btn" data-act="setPay" data-value="${v}" data-label="">$${v}</button>`).join('')}
+      </div></div>
+      <div class="field"><label>Note (optional)</label><input type="text" data-bind="label" value="${esc(f.label)}" placeholder="e.g. Doctor's fee"></div>
+      ${check('toPot', f.toPot, 'Put it in the Free Parking pot', '')}
+      <button type="button" class="btn primary block" data-act="payBank">Pay ${amt(f.amount)>0?money(amt(f.amount)):''}</button>`};
+  },
+  payPlayer(params, f){
+    const p=player(params.pid), others=othersOf(p.id);
+    if(!others.length) return {title:'Pay a player', body:'<div class="callout">There is nobody else to pay.</div>'};
+    return {title:`${p.name} pays`, body:`
+      <div class="field"><label>To</label>${playerSelect('to', f.to, others, `<option value="all" ${f.to==='all'?'selected':''}>Every other player (${others.length})</option>`)}</div>
+      <div class="field"><label>Amount${f.to==='all'?' to each player':''}</label><input type="number" inputmode="numeric" class="money" data-bind="amount" value="${esc(f.amount)}" placeholder="0">
+      ${quick('amount',[['$10',10],['$25',25],['$50',50],['$100',100],['$200',200]])}</div>
+      <button type="button" class="btn primary block" data-act="payPlayer">Pay ${amt(f.amount)>0?money(f.to==='all'?amt(f.amount)*others.length:amt(f.amount)):''}</button>`};
+  },
+  rent(params, f){
+    const p=player(params.pid);
+    const avail=PROPS.filter(q=>state.props[q.id].owner && state.props[q.id].owner!==p.id);
+    if(!avail.length) return {title:'Pay rent', body:'<div class="callout">No other player owns any property yet.</div>'};
+    const sel=f.propId?byId[f.propId]:null, dice=amt(f.dice);
+    const info=sel?rentInfo(sel.id,dice):null, owner=sel?state.props[sel.id].owner:null;
+    const ownerLabel = q=>ownerBadge(state.props[q.id].owner);
+    return {title:`${p.name} pays rent`, body:`
+      <div class="field"><label>Property landed on</label>${sel ? pickedRow(sel, ownerLabel(sel), 'propId') : propPicker('propId', avail, ownerLabel)}</div>
+      ${sel?`
+        <div class="callout">Owned by <b>${esc(nameOf(owner))}</b> · ${esc(info.note)}</div>
+        ${info.needsDice?`<div class="field"><label>Dice roll</label>${quick('dice',[2,3,4,5,6,7,8,9,10,11,12].map(n=>[n,n]))}</div>`:''}
+        <div class="row between"><span class="label">Rent due</span><span class="big-money">${money(info.amount)}</span></div>
+        <button type="button" class="btn primary block" data-act="payRent" ${info.amount>0?'':'disabled'}>Pay ${money(info.amount)} to ${esc(nameOf(owner))}</button>`:''}`};
+  },
+  buy(params, f){
+    const p=player(params.pid);
+    const unowned=PROPS.filter(q=>!state.props[q.id].owner);
+    if(!unowned.length) return {title:'Buy property', body:'<div class="callout">Every property is already owned.</div>'};
+    const sel=f.propId?byId[f.propId]:null;
+    return {title:`${p.name} buys`, body:`
+      <div class="field"><label>Property</label>${sel ? pickedRow(sel, money(sel.price), 'propId') : propPicker('propId', unowned, q=>money(q.price))}</div>
+      ${sel?`
+        <div class="callout">List price <strong>${money(sel.price)}</strong> · Mortgage value <strong>${money(mortgageValue(sel))}</strong>${sel.type==='street'?` · Houses <strong>${money(sel.house)}</strong> each`:''}<br><span class="meta">Change the price if it went to auction.</span></div>
+        <div class="field"><label>Price paid</label><input type="number" inputmode="numeric" class="money" data-bind="price" value="${esc(f.price)}"></div>
+        <button type="button" class="btn primary block" data-act="buy">Buy ${esc(sel.name)} for ${money(amt(f.price))}</button>`:''}`};
+  },
+  manage(params){
+    const p=player(params.pid), owned=ownedBy(p.id);
+    if(!owned.length) return {title:`${p.name}'s properties`, body:'<div class="callout">No properties yet.</div>'};
+    const {housesLeft,hotelsLeft}=supply();
+    return {title:`${p.name}'s properties`, body:`
+      <div class="callout">Cash <strong>${money(p.cash)}</strong> · Bank has <strong>${housesLeft}</strong> houses and <strong>${hotelsLeft}</strong> hotels left. Houses cost their listed price and sell back for half.</div>
+      <div class="manage-list">${owned.map(q=>{ const s=state.props[q.id];
+        return `<div class="manage-row" style="${propTint(q)}">
+          <div class="manage-title">${propIcon(q)}<button type="button" data-act="open" data-kind="prop" data-id="${q.id}">${esc(q.name)}</button>${s.mortgaged?'<span class="tag mort">Mortgaged</span>':''}${q.type==='street'&&!ownsGroup(p.id,q.group)?'<span class="tag">Set incomplete</span>':''}</div>
+          <div class="row">${q.type==='street'?stepper(q):''}${mortgageBtn(q)}<button type="button" class="btn sm ghost" data-act="open" data-kind="trade" data-id="${q.id}">Trade</button></div>
+        </div>`; }).join('')}</div>`};
+  },
+  prop(params, f){
+    const p=byId[params.id], s=state.props[p.id], G=GROUPS[p.group];
+    let table='';
+    if(p.type==='street'){
+      const rows=[['Rent',p.rent[0]],['With full color set',p.rent[0]*2],['1 house',p.rent[1]],['2 houses',p.rent[2]],['3 houses',p.rent[3]],['4 houses',p.rent[4]],['Hotel',p.rent[5]]];
+      table=`<table class="rent">${rows.map(([l,v])=>`<tr><td>${l}</td><td>${money(v)}</td></tr>`).join('')}</table>`;
+    } else if(p.type==='rr'){
+      table=`<table class="rent">${[1,2,3,4].map(n=>`<tr><td>${n} railroad${n>1?'s':''} owned</td><td>${money(25*Math.pow(2,n-1))}</td></tr>`).join('')}</table>`;
+    } else {
+      table=`<table class="rent"><tr><td>One utility owned</td><td>4 × dice</td></tr><tr><td>Both utilities owned</td><td>10 × dice</td></tr></table>`;
+    }
+    const status = s.owner ? `Owned by <b>${esc(nameOf(s.owner))}</b>${p.type==='street'?` · ${levelLabel(s.level)}`:''}${s.mortgaged?' · <b>Mortgaged</b>':''}${p.type==='street'&&ownsGroup(s.owner,p.group)?' · Full set':''}` : 'Owned by the bank';
+    const active=activePlayers();
+    const actions = s.owner ? `
+      <div class="row">${p.type==='street'?stepper(p):''}${mortgageBtn(p)}</div>
+      <div class="row"><button type="button" class="btn sm" data-act="open" data-kind="trade" data-id="${p.id}">Trade / transfer</button><button type="button" class="btn sm ghost" data-act="returnToBank" data-id="${p.id}">Return to bank</button></div>`
+    : `
+      <div class="field"><label>Buyer</label>${playerSelect('buyer', f.buyer, active)}</div>
+      <div class="field"><label>Price paid</label><input type="number" inputmode="numeric" class="money" data-bind="price" value="${esc(f.price)}"><span class="meta">Change the price if it went to auction.</span></div>
+      <button type="button" class="btn primary block" data-act="buyProp" ${active.length?'':'disabled'}>Buy for ${money(amt(f.price))}</button>`;
+    return {title:p.name, body:`
+      <div class="deed-card" style="--gc:${G.color};--gtext:${G.text}"><div class="deed-band">${G.name}</div><h3>${esc(p.name)}</h3>
+        <div class="facts"><span>Price <b>${money(p.price)}</b></span><span>Mortgage <b>${money(mortgageValue(p))}</b></span>${p.type==='street'?`<span>Houses <b>${money(p.house)}</b> each</span>`:''}</div></div>
+      ${table}
+      <div class="callout">${status}</div>
+      ${actions}`};
+  },
+  trade(params, f){
+    const p=byId[params.id], s=state.props[p.id], from=s.owner;
+    if(!from) return {title:'Transfer', body:'<div class="callout">The bank owns this property — use Buy instead.</div>'};
+    const others=othersOf(from), interest=interestOn(p);
+    return {title:`Transfer ${p.name}`, body:`
+      <div class="callout">Currently owned by <b>${esc(nameOf(from))}</b>${s.mortgaged?' · mortgaged':''}${p.type==='street'&&s.level>0?`<br><span style="color:var(--danger)">Sell its buildings before transferring.</span>`:''}</div>
+      <div class="field"><label>New owner</label>${playerSelect('to', f.to, others, `<option value="bank" ${f.to==='bank'?'selected':''}>Back to the bank</option>`)}</div>
+      ${f.to!=='bank'?`
+        <div class="field"><label>Cash in the deal (optional)</label><input type="number" inputmode="numeric" class="money" data-bind="cash" value="${esc(f.cash)}" placeholder="0"></div>
+        <div class="field"><label>Who pays the cash</label><select data-bind="payer"><option value="new" ${f.payer==='new'?'selected':''}>${esc(nameOf(f.to))} pays ${esc(nameOf(from))}</option><option value="old" ${f.payer==='old'?'selected':''}>${esc(nameOf(from))} pays ${esc(nameOf(f.to))}</option></select></div>
+        ${s.mortgaged?check('interest', f.interest, `${esc(nameOf(f.to))} pays the bank ${money(interest)} interest now`, '10%, official rule'):''}`:''}
+      <button type="button" class="btn primary block" data-act="transfer">${f.to==='bank'?'Return to the bank':'Transfer'}</button>`};
+  },
+  bankrupt(params, f){
+    const p=player(params.pid), others=othersOf(p.id);
+    const toBank=f.creditor==='bank';
+    return {title:`${p.name} goes bankrupt`, body:`
+      <div class="callout danger">This removes ${esc(p.name)} from the game. You can undo it.</div>
+      <div class="field"><label>Who are they unable to pay?</label>${playerSelect('creditor', f.creditor, others, `<option value="bank" ${toBank?'selected':''}>The bank</option>`)}</div>
+      <div class="callout">${toBank
+        ? 'All properties return to the bank, unmortgaged and without buildings. Remaining cash goes to the bank.'
+        : `${esc(nameOf(f.creditor))} receives all of ${esc(p.name)}'s cash and properties. Buildings are sold to the bank at half price and that cash goes to ${esc(nameOf(f.creditor))} too.${state.settings.transferInterest?' Mortgaged properties transfer with 10% interest paid to the bank.':''}`}</div>
+      <button type="button" class="btn danger block" data-act="bankrupt">Declare bankruptcy</button>`};
+  },
+  editPlayer(params, f){
+    const p=player(params.pid);
+    return {title:'Edit player', body:`
+      <div class="field"><label>Name</label><input type="text" data-bind="name" value="${esc(f.name)}" autocomplete="off"></div>
+      <div class="field"><label>Color</label><div class="swatches">${PLAYER_COLORS.map(c=>`<button type="button" class="${f.color===c?'sel':''}" style="--pc:${c}" data-act="setField" data-key="color" data-value="${c}" aria-label="Pick color"></button>`).join('')}</div></div>
+      <button type="button" class="btn primary block" data-act="savePlayer">Save</button>
+      <hr>
+      <button type="button" class="btn danger block" data-act="removePlayer" data-pid="${p.id}">Remove ${esc(p.name)} from the game</button>
+      <span class="meta">Their properties return to the bank and their cash is discarded.</span>`};
+  },
+  addPlayer(params, f){
+    return {title:'Add a player', body:`
+      <div class="field"><label>Name</label><input type="text" data-bind="name" value="${esc(f.name)}" placeholder="Player name" autocomplete="off"></div>
+      <div class="field"><label>Starting cash</label><input type="number" inputmode="numeric" class="money" data-bind="cash" value="${esc(f.cash)}"></div>
+      <button type="button" class="btn primary block" data-act="addPlayerConfirm" ${state.players.length>=8?'disabled':''}>Add player</button>`};
+  },
+  pot(params, f){
+    const active=activePlayers(), seed=state.settings.potSeed||0, sel=f.to?player(f.to):null;
+    return {title:'Free Parking', body:`
+      <div class="row between"><div><div class="label">In the pot</div><div class="big-money pot">${money(state.pot)}</div>${seed?`<div class="meta">The bank refills it with ${money(seed)} after each payout.</div>`:''}</div></div>
+      <div class="field"><label>Who landed on Free Parking?</label>${playerTiles('to', f.to, active)}</div>
+      <button type="button" class="btn primary block" data-act="potGive" ${state.pot>0&&sel?'':'disabled'}>${sel?`Pay ${money(state.pot)} to ${esc(sel.name)}`:state.pot>0?'Pick a player to pay out':'The pot is empty'}</button>
+      <hr>
+      <div class="field"><label>Add money from the bank</label><input type="number" inputmode="numeric" class="money" data-bind="add" value="${esc(f.add)}" placeholder="0">${quick('add',[['$50',50],['$100',100],['$500',500]])}</div>
+      <button type="button" class="btn block" data-act="potAdd">Add to pot</button>
+      <span class="meta">Taxes and fines can be sent here from each player's <b>Pay bank</b> screen.</span>`};
+  },
+  settings(params, f){
+    return {title:'Settings', body:`
+      <section class="settings-group"><h3>House rules</h3>
+        ${check('potRule', f.potRule, 'Taxes and fines go to Free Parking', 'Pay bank defaults to the pot. You can switch it per payment.')}
+        ${check('potSeedOn', f.potSeedOn, 'Bank seeds Free Parking', 'The bank puts money in the pot at the start and refills it after every payout.')}
+        ${f.potSeedOn?`<div class="field indent"><label>Seed amount</label><input type="number" inputmode="numeric" class="money" data-bind="potSeed" value="${esc(f.potSeed)}"></div>`:''}
+        ${check('evenBuild', f.evenBuild, 'Build evenly', 'No property in a set may get more than one building ahead of the others. Official rule.')}
+        ${check('enforceSupply', f.enforceSupply, 'Limit buildings to the bank\'s supply', '32 houses and 12 hotels, like the box. Official rule.')}
+        ${check('transferInterest', f.transferInterest, 'Interest on transferred mortgages', 'The new owner pays the bank 10% when a mortgaged property changes hands. Official rule.')}
+        ${check('allowDebt', f.allowDebt, 'Allow negative cash', 'Lets a player owe money instead of blocking the payment.')}
+      </section>
+      <section class="settings-group"><h3>Amounts</h3>
+        <div class="row">
+          <div class="field" style="flex:1"><label>GO salary</label><input type="number" inputmode="numeric" class="money" data-bind="goSalary" value="${esc(f.goSalary)}"></div>
+          <div class="field" style="flex:1"><label>Income tax</label><input type="number" inputmode="numeric" class="money" data-bind="incomeTax" value="${esc(f.incomeTax)}"></div>
+        </div>
+        <div class="row">
+          <div class="field" style="flex:1"><label>Luxury tax</label><input type="number" inputmode="numeric" class="money" data-bind="luxuryTax" value="${esc(f.luxuryTax)}"></div>
+          <div class="field" style="flex:1"><label>Jail fine</label><input type="number" inputmode="numeric" class="money" data-bind="jailFine" value="${esc(f.jailFine)}"></div>
+        </div>
+        <div class="field"><label>Starting cash for new players</label><input type="number" inputmode="numeric" class="money" data-bind="startingCash" value="${esc(f.startingCash)}"></div>
+      </section>
+      <button type="button" class="btn primary block" data-act="saveSettings">Save settings</button>
+      <hr>
+      <button type="button" class="btn danger block" data-act="confirmNewGame">Start a new game</button>`};
+  },
+  newGameConfirm(){
+    return {title:'Start over?', body:`<div class="callout danger">This wipes the current game — every balance, deed and log entry. It cannot be undone.</div><button type="button" class="btn danger block" data-act="resetGame">Yes, start a new game</button>`};
+  },
+  undoConfirm(){
+    const e=state.log[0];
+    if(!history.length||!e) return {title:'Undo', body:'<div class="callout">Nothing to undo yet.</div>'};
+    return {title:'Undo the last action?', body:`
+      <div class="callout warn"><div class="label" style="margin-bottom:4px">${fmtTime(e.t)}</div>${esc(e.msg)}</div>
+      <span class="meta">Cash, deeds and buildings go back to exactly how they were before this happened.</span>
+      <div class="row"><button type="button" class="btn danger" style="flex:1" data-act="undoConfirmed">Undo it</button><button type="button" class="btn" style="flex:1" data-act="${ui.stack.length?'back':'close'}">Keep it</button></div>`};
+  }
+};
+
+/* ---------- Events ---------- */
+function ctx(){ return ui.sheet ? ui.sheet.params : {}; }
+const ACTIONS = {
+  tab(d){ ui.tab=d.tab; renderTabs(); renderMain(); },
+  undoAsk(){ if(!state) return; if(!history.length) return toast('Nothing to undo'); if(ui.sheet && ui.sheet.kind==='undoConfirm') return; openSheet('undoConfirm'); },
+  undoConfirmed(){ const ok=undo(); if(ui.sheet && ui.sheet.kind==='undoConfirm'){ if(ui.stack.length) back(); else closeSheet(); } if(!ok) toast('Nothing to undo'); },
+  settings(){ if(!state) return; openSheet('settings'); },
+  setup(){ openSheet('setup'); },
+  nextTurn(){ nextTurn(); },
+  potSheet(){ openSheet('pot'); },
+  playerSheet(d){ openSheet('player',{pid:d.pid}); },
+  propSheet(d){ openSheet('prop',{id:d.id}); },
+  addPlayer(){ openSheet('addPlayer'); },
+  open(d){ const params=Object.assign({}, ctx()); if(d.pid) params.pid=d.pid; if(d.id) params.id=d.id; openSheet(d.kind, params); },
+  back(){ back(); },
+  close(){ closeSheet(); },
+  overlay(d, el, e){ if(e.target===el && !(ui.sheet.kind==='setup' && !state)) closeSheet(); },
+  setField(d){
+    ui.form[d.key]=d.value;
+    if(d.key==='propId' && ui.sheet && ui.sheet.kind==='buy') ui.form.price = byId[d.value] ? byId[d.value].price : '';
+    renderSheet();
+  },
+  setPay(d){ ui.form.amount=d.value; ui.form.label=d.label; renderSheet(); },
+  setupAdd(){ if(ui.form.names.length<8){ ui.form.names.push('Player '+(ui.form.names.length+1)); renderSheet(); } },
+  setupRemove(d){ if(ui.form.names.length>2){ ui.form.names.splice(Number(d.i),1); renderSheet(); } },
+  startGame(){
+    const names=ui.form.names.map(s=>String(s).trim()).filter(Boolean);
+    if(names.length<2) return toast('Add at least two players','error');
+    const cash=amt(ui.form.startingCash); if(cash<=0) return toast('Starting cash must be above zero','error');
+    newGame(names, cash, {potRule:!!ui.form.potRule, potSeed: ui.form.potSeedOn?50:0}); closeSheet(); render(); toast('Game on — tap a player to bank for them');
+  },
+  go(){ doGo(ctx().pid); },
+  collect(){ const f=ui.form; doCollect(ctx().pid, f.source, amt(f.amount), String(f.reason||'').trim()); },
+  payBank(){ const f=ui.form; doPayBank(ctx().pid, amt(f.amount), !!f.toPot, String(f.label||'').trim()); },
+  payPlayer(){ const f=ui.form; doPayPlayer(ctx().pid, f.to, amt(f.amount)); },
+  payRent(){ const f=ui.form; doPayRent(ctx().pid, f.propId, amt(f.dice)); },
+  buy(){ const f=ui.form; doBuy(ctx().pid, f.propId, amt(f.price)); },
+  buyProp(){ const f=ui.form; doBuy(f.buyer, ctx().id, amt(f.price)); },
+  level(d){ const s=state.props[d.id]; doSetLevel(d.id, s.level+Number(d.delta)); },
+  mortgage(d){ doMortgage(d.id); },
+  unmortgage(d){ doUnmortgage(d.id); },
+  returnToBank(d){ doTransfer(d.id, 'bank', 0, 'new', false); },
+  transfer(){ const f=ui.form; doTransfer(ctx().id, f.to, amt(f.cash), f.payer, !!f.interest); },
+  potGive(){ const f=ui.form; if(!player(f.to)) return toast('Pick who landed on Free Parking','error'); doCollectPot(f.to); },
+  potAdd(){ doAddPot(amt(ui.form.add)); },
+  bankrupt(){ doBankrupt(ctx().pid, ui.form.creditor); },
+  savePlayer(){
+    const p=player(ctx().pid), name=String(ui.form.name||'').trim(); if(!name) return toast('Enter a name','error');
+    const old=p.name;
+    commit(old===name?`${name} changed color`:`${old} is now called ${name}`, ()=>{ p.name=name; p.color=ui.form.color||p.color; }) && back();
+  },
+  removePlayer(d){
+    const p=player(d.pid||ctx().pid); if(!p) return;
+    commit(`${p.name} left the game — their properties returned to the bank`, ()=>{
+      for(const pr of ownedBy(p.id)){ const s=state.props[pr.id]; s.owner=null; s.level=0; s.mortgaged=false; }
+      state.players=state.players.filter(q=>q.id!==p.id); ensureTurn();
+      if(!state.players.length) return 'Keep at least one player, or start a new game from Settings.';
+    }) && closeSheet();
+  },
+  addPlayerConfirm(){
+    const name=String(ui.form.name||'').trim(); if(!name) return toast('Enter a name','error');
+    if(state.players.length>=8) return toast('Eight players is the maximum','error');
+    const cash=amt(ui.form.cash);
+    commit(`${name} joined with ${money(cash)}`, ()=>{
+      const id='p'+(state.nextId++); const used=new Set(state.players.map(p=>p.color));
+      const color=PLAYER_COLORS.find(c=>!used.has(c))||PLAYER_COLORS[state.players.length%PLAYER_COLORS.length];
+      state.players.push({id, name, color, cash, bankrupt:false}); ensureTurn();
+    }) && closeSheet();
+  },
+  saveSettings(){
+    const f=ui.form;
+    const seed = f.potSeedOn ? Math.max(0, amt(f.potSeed)) : 0;
+    state.settings=Object.assign({}, state.settings, {
+      potRule:!!f.potRule, potSeed:seed, enforceSupply:!!f.enforceSupply, evenBuild:!!f.evenBuild, transferInterest:!!f.transferInterest, allowDebt:!!f.allowDebt,
+      goSalary:Math.max(0,amt(f.goSalary)), incomeTax:Math.max(0,amt(f.incomeTax)), luxuryTax:Math.max(0,amt(f.luxuryTax)), jailFine:Math.max(0,amt(f.jailFine)), startingCash:Math.max(0,amt(f.startingCash))
+    });
+    save(); closeSheet();
+    if(seed>0 && state.pot<=0){ commit(`Settings saved — the bank seeded Free Parking with ${money(seed)}`, ()=>{ moveCash('bank','pot',seed); }); }
+    else { render(); toast('Settings saved'); }
+  },
+  confirmNewGame(){ openSheet('newGameConfirm'); },
+  reloadApp(){ location.reload(); },
+  resetGame(){ state=null; history=[]; try{ localStorage.removeItem(LS_KEY); }catch(e){} ui.stack=[]; ui.sheet=null; ui.lastSheetKey=null; ui.tab='players'; render(); openSheet('setup'); }
+};
+
+document.addEventListener('click', e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  if(el.dataset.act==='overlay' && e.target!==el) return;
+  if(el.disabled) return;
+  const fn=ACTIONS[el.dataset.act]; if(!fn) return;
+  e.preventDefault(); fn(el.dataset, el, e);
+});
+function bindFrom(el){
+  const key=el.dataset.bind; if(!key) return false;
+  const val = el.type==='checkbox' ? el.checked : el.value;
+  const m=/^name_(\d+)$/.exec(key);
+  if(m){ ui.form.names[Number(m[1])]=val; return false; }
+  ui.form[key]=val;
+  if(key==='to' && ui.sheet && ui.sheet.kind==='trade' && val==='bank'){ ui.form.cash=''; }
+  return true;
+}
+document.addEventListener('input', e=>{ const el=e.target; if(el.dataset && el.dataset.bind) bindFrom(el); });
+document.addEventListener('change', e=>{
+  const el=e.target; if(!el.dataset || !el.dataset.bind) return;
+  bindFrom(el);
+  if(el.tagName==='SELECT' || el.type==='checkbox') renderSheet();
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && ui.sheet && !(ui.sheet.kind==='setup' && !state)) closeSheet(); });
+
+/* ---------- Toast ---------- */
+let toastTimer=null;
+function toast(msg, type, opts={}){
+  const root=$('#toastRoot');
+  const undoBtn = opts.undo && history.length ? '<button type="button" class="toast-btn" data-act="undoAsk">Undo</button>' : '';
+  const reloadBtn = opts.reload ? '<button type="button" class="toast-btn" data-act="reloadApp">Reload</button>' : '';
+  root.innerHTML=`<div class="toast ${type||''}" role="status"><span>${esc(msg)}</span>${undoBtn}${reloadBtn}</div>`;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>{ root.innerHTML=''; }, type==='error'?4200:(reloadBtn?10000:undoBtn?5200:2600));
+}
+
+/* ---------- Offline: service worker, update notice, connection chip ---------- */
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); });
+  navigator.serviceWorker.addEventListener('message', e=>{ if(e.data && e.data.type==='app-updated') toast('A newer version of the banker is ready.', null, {reload:true}); });
+}
+function renderOnline(){ const chip=$('#offlineChip'); if(chip) chip.hidden = navigator.onLine!==false; }
+window.addEventListener('online', renderOnline);
+window.addEventListener('offline', renderOnline);
+renderOnline();
+
+/* ---------- Ads (only when the Worker flips the meta tag and provides an AdSense client + slot) ---------- */
+(function initAds(){
+  const meta=name=>{ const m=document.querySelector(`meta[name="${name}"]`); return m?m.content:''; };
+  if(meta('ads-enabled')!=='true') return;
+  const client=meta('adsense-client'), slot=meta('adsense-slot');
+  if(!client || !slot) return; // script only: Google decides placement (Auto ads) and no banner bar is shown
+  const bar=$('#adBar'), slotEl=$('#adSlot'); if(!bar||!slotEl) return;
+  const ins=document.createElement('ins');
+  ins.className='adsbygoogle'; ins.style.display='block';
+  ins.setAttribute('data-ad-client', client);
+  ins.setAttribute('data-ad-slot', slot);
+  ins.setAttribute('data-ad-format', 'horizontal');
+  ins.setAttribute('data-full-width-responsive', 'true');
+  slotEl.replaceChildren(ins);
+  bar.hidden=false; document.body.classList.add('has-ads');
+  const fit=()=>document.body.style.setProperty('--adbar-h', bar.offsetHeight+'px');
+  fit(); if(window.ResizeObserver) new ResizeObserver(fit).observe(bar);
+  try{ (window.adsbygoogle=window.adsbygoogle||[]).push({}); }catch(e){}
+})();
+
+/* ---------- Boot ---------- */
+load();
+render();
+if(!state) openSheet('setup');
+
+/* ---------- Test hook ----------
+   Read-mostly access for the automated tests in test/app.test.js (see REVIEW.md). Not used by the UI itself. */
+window.__monopolyBanker = {
+  PROPS, GROUPS, HOUSE_SUPPLY, HOTEL_SUPPLY,
+  getState: ()=>state, getHistory: ()=>history, ui, ACTIONS,
+  newGame, load, save, commit, undo, ensureTurn,
+  rentInfo, buildCheck, mortgageCheck, canPay, netWorth, supply, mortgageValue, unmortgageCost,
+  doGo, doCollect, doPayBank, doPayPlayer, doPayRent, doBuy, doSetLevel, doMortgage, doUnmortgage, doTransfer, doCollectPot, doAddPot, doBankrupt, nextTurn,
+  openSheet, closeSheet, render
+};
+})();
+</script>
+</body>
+</html>
